@@ -26,8 +26,9 @@ The board is the pre-token set: protocols that record no token (no CoinGecko id,
 excluding wrapped, staked or bridged products of tokens that already trade (the Bridge, Canonical
 Bridge, Liquid Staking, Liquid Restaking, Restaked BTC and CEX categories, version-suffixed names,
 names carrying the whole words *wrapped*, *staked* or *staking*, and exchange-prefixed names). All
-40 watchlist protocols are on the board. The dashboard also carries an estimated airdrop pool per
-row — implied value × a per-category community-allocation prior (4–12%) — and a generated farm plan
+40 watchlist protocols are on the board. The dashboard's model panel lists every category's peer
+multiple and peer count, read off the same snapshot. The dashboard also carries an estimated
+airdrop pool per row — implied value × a per-category community-allocation prior (5–12%) — and a generated farm plan
 per protocol: category playbooks priced with the gas band of the protocol's own first chain and a
 position sized to its TVL. Token-bearing protocols are shown separately, at the market's own market
 cap, and are never ranked by the model.

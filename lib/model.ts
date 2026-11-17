@@ -43,7 +43,7 @@ export interface Snapshot {
 }
 
 /** The model's version label: the dashboard names it. */
-export const MODEL_VERSION = 'peer-multiple-1';
+export const MODEL_VERSION = 'peer-multiple-2';
 
 /** Categories that are products of a token that already trades, never a launch of their own. */
 const DERIVATIVE_CATEGORIES = new Set([
@@ -167,6 +167,20 @@ export const ALLOCATION_PRIORS: Record<string, number> = {
   'Basis Trading': 0.06,
   'Insurance': 0.06,
   'Uncollateralized Lending': 0.08,
+  'Leveraged Farming': 0.07,
+  'Liquidity Manager': 0.06,
+  'Interest Rate Derivatives': 0.07,
+  'Payments': 0.07,
+  'OTC Marketplace': 0.07,
+  'Governance Incentives': 0.08,
+  'Collateral Markets': 0.06,
+  'Dual-Token Stablecoin': 0.07,
+  'Stablecoin Wrapper': 0.05,
+  'CeDeFi': 0.05,
+  'Crypto Card Issuer': 0.08,
+  'Anchor BTC': 0.05,
+  'Decentralized BTC': 0.07,
+  'Indexes': 0.05,
 };
 
 /** The allocation prior for a category: its table entry, or the 5% default. */
@@ -218,6 +232,13 @@ export interface LiveRow {
   change_7d: number | null;
 }
 
+/** One category's peer multiple as the dashboard's model panel states it. */
+export interface CategoryMultipleRow {
+  category: string;
+  multiple: number;
+  peers: number;
+}
+
 /** Everything the dashboard needs: the board, the live set, and the model it runs. */
 export interface RadarData {
   as_of: string;
@@ -225,6 +246,7 @@ export interface RadarData {
   floor_usd: number;
   model_version: string;
   global_multiple: number;
+  category_multiples: CategoryMultipleRow[];
   watchlist_size: number;
   board_size: number;
   live_size: number;
@@ -296,13 +318,20 @@ export function liveRows(snapshot: Snapshot): LiveRow[] {
 export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: RadarData } {
   const board = buildBoard(snapshot);
   const live = liveRows(snapshot);
-  const { globalMedian } = categoryMultiples(snapshot);
+  const { byCategory, globalMedian } = categoryMultiples(snapshot);
+  const boardCategories = [...new Set(board.map((r) => r.category))];
   const radar: RadarData = {
     as_of: snapshot.as_of,
     source: snapshot.source,
     floor_usd: snapshot.floor_usd,
     model_version: MODEL_VERSION,
     global_multiple: round4(globalMedian),
+    category_multiples: boardCategories
+      .map((category) => {
+        const m = multipleFor(byCategory, globalMedian, category);
+        return { category: category ?? 'Uncategorised', multiple: round4(m.multiple), peers: m.peers };
+      })
+      .sort((a, b) => (a.category < b.category ? -1 : a.category > b.category ? 1 : 0)),
     watchlist_size: snapshot.watchlist.length,
     board_size: board.length,
     live_size: live.length,

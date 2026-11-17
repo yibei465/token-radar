@@ -61,6 +61,19 @@ h1 { margin: 0; font-size: 30px; letter-spacing: .2px; font-weight: 700; }
 .formula { font-family: var(--mono); font-size: 14.5px; color: var(--text); white-space: nowrap; }
 .formula b { color: var(--amber-soft); font-weight: 600; }
 .formula .op { color: var(--faint); padding: 0 2px; }
+.multiples { margin-top: 10px; }
+.multiples summary { cursor: pointer; color: var(--amber-soft); font-size: 13px; font-weight: 600; }
+.mult-grid { display: flex; flex-wrap: wrap; gap: 5px 16px; margin-top: 8px; }
+.mult-grid span { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.mult-grid b { color: var(--text); font-weight: 600; }
+.mult-grid i { color: var(--faint); font-style: normal; }
+
+/* Detail view: the model panel steps aside so the protocol and its plan own the page. */
+body.is-detail .model-panel { display: none; }
+body.is-detail .masthead-in { padding-top: 18px; padding-bottom: 14px; }
+body.is-detail .tagline { display: none; }
+body.is-detail h1 { font-size: 22px; }
+body.is-detail .brand-mark { width: 28px; height: 28px; }
 
 /* Layout */
 main { max-width: 1240px; margin: 0 auto; padding: 20px 28px 8px; }

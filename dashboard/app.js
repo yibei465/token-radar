@@ -64,7 +64,10 @@ function renderChrome() {
     `<div>Watchlist ${R.watchlist_size}/${R.watchlist_size} covered</div>`;
   document.getElementById('model-panel').innerHTML =
     `<div class="model-card"><div><h2>How implied value works</h2>` +
-    `<p>Each protocol is priced the way its own category actually trades: the multiple is the median market-cap / TVL of the category's live-token protocols in this snapshot (global median ${R.global_multiple.toFixed(2)}x), nudged by its 7-day TVL momentum and by how long it has run with no token. The est. pool applies a category allocation prior — the share of a launch typically reserved for the community that farmed it.</p></div>` +
+    `<p>Each protocol is priced the way its own category actually trades: the multiple is the median market-cap / TVL of the category's live-token protocols in this snapshot (global median ${R.global_multiple.toFixed(2)}x), nudged by its 7-day TVL momentum and by how long it has run with no token. The est. pool applies a category allocation prior — the share of a launch typically reserved for the community that farmed it.</p>` +
+    `<details class="multiples"><summary>Peer multiples by category, from this snapshot</summary><div class="mult-grid">` +
+    R.category_multiples.map((c) => `<span>${esc(c.category)} <b>×${c.multiple.toFixed(2)}</b> <i>(${c.peers} peer${c.peers === 1 ? '' : 's'})</i></span>`).join('') +
+    `</div></details></div>` +
     `<div class="formula"><b>implied</b> <span class="op">=</span> TVL <span class="op">×</span> <b>peer multiple</b> <span class="op">×</span> <b>momentum</b> <span class="op">×</span> <b>maturity</b></div></div>`;
   document.getElementById('foot').textContent =
     `Data: ${R.source}. Implied values are this radar's own model estimates (model ${R.model_version}), not predictions that a token will launch. A protocol listed here records no token in the snapshot; that is DefiLlama's record, not proof none exists.`;
@@ -85,6 +88,7 @@ function options(values, current, allLabel) {
 }
 
 function renderBoard(s) {
+  document.body.classList.remove('is-detail');
   state = s;
   const rows = s.tab === 'live' ? R.live : R.rows;
   const cats = [...new Set(rows.map((r) => catLabel(r.category)))].sort();
@@ -143,7 +147,7 @@ function updateTable() {
   tbody.innerHTML = rows.map((r) => s.tab === 'live'
     ? `<tr data-slug="${esc(r.slug)}"><td><div class="proto-name">${esc(r.name)}<span class="chip chip-live">${esc(r.symbol || 'live')}</span></div><div class="proto-sub">${esc(catLabel(r.category))} · ${esc(chainLabel(r.chains))}</div></td>` +
       `<td class="right num">${money(r.tvl_usd)}</td><td class="right num">${pct(r.change_7d)}</td><td class="right num value">${money(r.mcap_usd)}</td></tr>`
-    : `<tr data-slug="${esc(r.slug)}"><td class="rank">${r.rank}</td><td><div class="proto-name">${esc(r.name)}${r.watchlist ? '<span class="chip chip-watch">Watchlist</span>' : ''}</div><div class="proto-sub">${esc(catLabel(r.category))} · ${esc(chainLabel(r.chains))}</div></td>` +
+    : `<tr data-slug="${esc(r.slug)}" tabindex="0"><td class="rank">${r.rank}</td><td><div class="proto-name">${esc(r.name)}${r.watchlist ? '<span class="chip chip-watch">Watchlist</span>' : ''}</div><div class="proto-sub">${esc(catLabel(r.category))} · ${esc(chainLabel(r.chains))}</div></td>` +
       `<td class="right num">${money(r.tvl_usd)}</td><td class="right num">${pct(r.change_7d)}</td><td class="right num value">${money(r.implied_value_usd)}</td><td class="right num pool">${money(r.pool_usd)}</td></tr>`
   ).join('');
 }
@@ -163,22 +167,32 @@ function wireBoard() {
     else { s.sort = key; s.dir = key === 'rank' || key === 'name' ? 'asc' : 'desc'; }
     push(); renderBoard(s);
   }));
-  document.getElementById('tbody').addEventListener('click', (e) => {
-    const tr = e.target.closest('tr[data-slug]');
-    if (tr && state.tab === 'pre') { location.hash = '#detail=' + encodeURIComponent(tr.dataset.slug); }
+  const tbody = document.getElementById('tbody');
+  const open = (tr) => { if (tr && state.tab === 'pre') location.hash = '#detail=' + encodeURIComponent(tr.dataset.slug); };
+  tbody.addEventListener('click', (e) => open(e.target.closest('tr[data-slug]')));
+  tbody.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') open(e.target.closest('tr[data-slug]'));
   });
 }
 
 /* ---------- detail ---------- */
-function barWidth(kind, v) {
+function barWidth(kind, v, row) {
+  if (kind === 'base') return Math.max(3, Math.min(100, (row.tvl_usd / row.implied_value_usd) * 100));
   if (kind === 'multiple') return Math.max(3, Math.min(100, (v / 3) * 100));
   if (kind === 'momentum') return Math.max(3, Math.min(100, ((v - 0.8) / 0.6) * 100));
   return Math.max(3, Math.min(100, ((v - 0.85) / 0.3) * 100));
 }
-function factorRow(label, explain, kind, v, shown) {
-  return `<div class="factor"><div class="fk">${label}<br><span style="color:var(--faint);font-size:12px">${explain}</span></div><div class="bar"><i style="width:${barWidth(kind, v).toFixed(1)}%"></i></div><div class="fv">${shown}</div></div>`;
+/** How a category's multiple was earned: its own median, a shrunk median, or the global fallback. */
+function peerExplain(m, category) {
+  if (m.peers >= 3) return `median of ${m.peers} live-token ${category} peers in this snapshot`;
+  if (m.peers >= 1) return `only ${m.peers} live-token ${category} peer${m.peers === 1 ? '' : 's'} — shrunk toward the global median`;
+  return `no live-token ${category} peers — the global median multiple`;
+}
+function factorRow(label, explain, kind, v, shown, row) {
+  return `<div class="factor"><div class="fk">${label}<br><span style="color:var(--faint);font-size:12px">${explain}</span></div><div class="bar"><i style="width:${barWidth(kind, v, row).toFixed(1)}%"></i></div><div class="fv">${shown}</div></div>`;
 }
 function renderDetail(slug) {
+  document.body.classList.add('is-detail');
   const r = R.rows.find((x) => x.slug === slug);
   if (!r) { renderBoard({ view: 'board', tab: 'pre', cat: '', chain: '', watch: false, q: '', sort: '', dir: '' }); return; }
   const m = r.model;
@@ -192,10 +206,10 @@ function renderDetail(slug) {
     `<div class="stat"><div class="k">TVL</div><div class="v">${moneyFull(r.tvl_usd)}</div><div class="s">7d change ${r.change_7d === null ? 'not recorded' : (r.change_7d > 0 ? '+' : '') + r.change_7d.toFixed(1) + '%'}</div></div>` +
     `<div class="stat"><div class="k">Running with no token</div><div class="v">${ageTxt}</div><div class="s">tracked since ${esc(r.listed_at || '—')}</div></div></div>` +
     `<section class="panel"><h3>How this value is built</h3>` +
-    factorRow('TVL base', `${moneyFull(r.tvl_usd)} locked in the protocol`, 'multiple', m.multiple, moneyFull(r.tvl_usd)) +
-    factorRow('Peer multiple', `median of ${m.peers} live-token ${esc(catLabel(r.category))} peer${m.peers === 1 ? '' : 's'}`, 'multiple', m.multiple, '× ' + m.multiple.toFixed(2)) +
-    factorRow('Momentum', 'its 7-day TVL change, damped', 'momentum', m.momentum, '× ' + m.momentum.toFixed(2)) +
-    factorRow('Maturity', 'how long it has run with no token', 'maturity', m.maturity, '× ' + m.maturity.toFixed(2)) +
+    factorRow('TVL base', `${moneyFull(r.tvl_usd)} locked in the protocol`, 'base', 0, moneyFull(r.tvl_usd), r) +
+    factorRow('Peer multiple', esc(peerExplain(m, catLabel(r.category))), 'multiple', m.multiple, '× ' + m.multiple.toFixed(2), r) +
+    factorRow('Momentum', 'its 7-day TVL change, damped', 'momentum', m.momentum, '× ' + m.momentum.toFixed(2), r) +
+    factorRow('Maturity', 'how long it has run with no token', 'maturity', m.maturity, '× ' + m.maturity.toFixed(2), r) +
     `<div class="factor-total"><span>Implied value</span><span class="tv">${moneyFull(r.implied_value_usd)}</span></div></section>` +
     `<section class="panel"><h3>Farm plan — what to do before it launches</h3><ol class="plan">` +
     r.farm_steps.map((st) => `<li><span class="n"></span><div><div class="step-text">${esc(st.text)}</div><div class="step-chips"><span>Cost <b>${esc(st.cost)}</b></span><span>Time <b>${esc(st.time)}</b></span></div></div></li>`).join('') +
