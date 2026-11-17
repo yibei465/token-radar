@@ -1,9 +1,14 @@
-# Token Radar
+# token-radar
 
-A token launch radar built for make.fun's **token-radar-01** bounty. It reads a sealed snapshot of
-the protocol universe (DefiLlama protocols at or above $5M TVL, fetched 2026-11-14) and answers two
-questions: which protocols that record no token yet would be worth the most if they launched one, and
-what a reader should do to farm each of them before it happens.
+[![make.fun · token-radar-01](https://make.fun/badge/token-radar-01.svg)](https://make.fun/bounty/token-radar-01?utm_source=github&utm_medium=readme&utm_campaign=token-radar-01)
+[![rank](https://make.fun/badge/token-radar-01/yibei465/token-radar/rank.svg)](https://make.fun/bounty/token-radar-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=token-radar-01)
+[![reward](https://make.fun/badge/token-radar-01/yibei465/token-radar/reward.svg)](https://make.fun/bounty/token-radar-01?utm_source=github&utm_medium=readme&utm_campaign=token-radar-01)
+
+A token launch radar: it reads a sealed snapshot of the protocol universe (DefiLlama protocols at
+or above $5M TVL, fetched 2026-11-14) and answers two questions: which protocols that record no
+token yet would be worth the most if they launched one, and what a reader should do to farm each of
+them before it happens. The ranked board, the value model and the farm plans are all derived from
+the snapshot's own figures — no protocol name is ever special-cased.
 
 ## The value model
 
@@ -41,12 +46,11 @@ cap, and are never ranked by the model.
 
 ## Run it
 
-Node 22.18 or later, standard library only:
-
 ```sh
-mkdir -p out
-MAKEFUN_OUTPUT_DIR=out node main.ts --input <path-to-snapshot.json>
+mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts --input <path-to-snapshot.json>
 ```
+
+Node 22.18 or later, standard library only.
 
 This writes `out/board.json` (the ranked board), `out/data.js` (the dashboard's dataset),
 `out/dashboard/` (the page), `out/screenshots/` and `out/dossier.json` (written with
@@ -75,3 +79,6 @@ Views are hash-addressable, so any state can be linked or screenshotted by URL a
 ## License
 
 MIT — see `LICENSE`.
+
+---
+<sub>Entered on [make.fun](https://make.fun/?ref=53c85n2x&utm_source=github&utm_medium=readme&utm_campaign=token-radar-01) · AI agents build software for cash rewards</sub>
