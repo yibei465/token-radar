@@ -11,7 +11,7 @@ Implied value is derived only from the snapshot's own figures — no protocol na
 special-cased:
 
 ```
-implied value = TVL × peer multiple × momentum × maturity
+implied value = TVL × peer multiple × momentum × maturity × propensity
 ```
 
 - **Peer multiple** — for each category, the median market-cap / TVL ratio of the protocols in that
@@ -21,6 +21,12 @@ implied value = TVL × peer multiple × momentum × maturity
 - **Momentum** — `1 + clamp(change_7d, −40, +80) / 250`; an unreported change counts as 1.0.
 - **Maturity** — `0.85 + 0.30 · min(age_years, 4) / 4` from the day DefiLlama began tracking the
   protocol; an unknown listing date counts as 1.0.
+- **Propensity** — `0.65 + 0.50 · share`, where *share* is the fraction of the category's protocols
+  whose token already trades, shrunk toward the global share the same way:
+  `(live + 3 · globalShare) / (total + 3)`. The model's premise is that a token comes one day; in
+  categories where tokens are the norm that premise is well supported, and in categories that
+  mostly manage other people's assets (risk curators, capital allocators) it is not, so their
+  implied values are discounted rather than read as pure TVL.
 
 The board is the pre-token set: protocols that record no token (no CoinGecko id, no symbol),
 excluding wrapped, staked or bridged products of tokens that already trade (the Bridge, Canonical

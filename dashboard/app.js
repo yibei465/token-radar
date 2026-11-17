@@ -64,11 +64,11 @@ function renderChrome() {
     `<div>Watchlist ${R.watchlist_size}/${R.watchlist_size} covered</div>`;
   document.getElementById('model-panel').innerHTML =
     `<div class="model-card"><div><h2>How implied value works</h2>` +
-    `<p>Each protocol is priced the way its own category actually trades: the multiple is the median market-cap / TVL of the category's live-token protocols in this snapshot (global median ${R.global_multiple.toFixed(2)}x), nudged by its 7-day TVL momentum and by how long it has run with no token. The est. pool applies a category allocation prior — the share of a launch typically reserved for the community that farmed it.</p>` +
-    `<details class="multiples"><summary>Peer multiples by category, from this snapshot</summary><div class="mult-grid">` +
-    R.category_multiples.map((c) => `<span>${esc(c.category)} <b>×${c.multiple.toFixed(2)}</b> <i>(${c.peers} peer${c.peers === 1 ? '' : 's'})</i></span>`).join('') +
+    `<p>Each protocol is priced the way its own category actually trades: the multiple is the median market-cap / TVL of the category's live-token protocols in this snapshot (global median ${R.global_multiple.toFixed(2)}x), nudged by its 7-day TVL momentum and by how long it has run with no token, then scaled by its category's token propensity — the share of that category's protocols whose token already trades (${(R.global_token_share * 100).toFixed(0)}% across the snapshot), so categories that mostly manage other people's assets are not read as pure TVL. The est. pool applies a category allocation prior — the share of a launch typically reserved for the community that farmed it.</p>` +
+    `<details class="multiples"><summary>Peer multiples and propensity by category, from this snapshot</summary><div class="mult-grid">` +
+    R.category_multiples.map((c) => `<span>${esc(c.category)} <b>×${c.multiple.toFixed(2)}</b> <i>(${c.peers} peer${c.peers === 1 ? '' : 's'})</i> · prop <b>×${c.propensity.toFixed(2)}</b></span>`).join('') +
     `</div></details></div>` +
-    `<div class="formula"><b>implied</b> <span class="op">=</span> TVL <span class="op">×</span> <b>peer multiple</b> <span class="op">×</span> <b>momentum</b> <span class="op">×</span> <b>maturity</b></div></div>`;
+    `<div class="formula"><b>implied</b> <span class="op">=</span> TVL <span class="op">×</span> <b>peer multiple</b> <span class="op">×</span> <b>momentum</b> <span class="op">×</span> <b>maturity</b> <span class="op">×</span> <b>propensity</b></div></div>`;
   document.getElementById('foot').textContent =
     `Data: ${R.source}. Implied values are this radar's own model estimates (model ${R.model_version}), not predictions that a token will launch. A protocol listed here records no token in the snapshot; that is DefiLlama's record, not proof none exists.`;
 }
@@ -180,6 +180,7 @@ function barWidth(kind, v, row) {
   if (kind === 'base') return Math.max(3, Math.min(100, (row.tvl_usd / row.implied_value_usd) * 100));
   if (kind === 'multiple') return Math.max(3, Math.min(100, (v / 3) * 100));
   if (kind === 'momentum') return Math.max(3, Math.min(100, ((v - 0.8) / 0.6) * 100));
+  if (kind === 'propensity') return Math.max(3, Math.min(100, ((v - 0.65) / 0.5) * 100));
   return Math.max(3, Math.min(100, ((v - 0.85) / 0.3) * 100));
 }
 /** How a category's multiple was earned: its own median, a shrunk median, or the global fallback. */
@@ -210,6 +211,7 @@ function renderDetail(slug) {
     factorRow('Peer multiple', esc(peerExplain(m, catLabel(r.category))), 'multiple', m.multiple, '× ' + m.multiple.toFixed(2), r) +
     factorRow('Momentum', 'its 7-day TVL change, damped', 'momentum', m.momentum, '× ' + m.momentum.toFixed(2), r) +
     factorRow('Maturity', 'how long it has run with no token', 'maturity', m.maturity, '× ' + m.maturity.toFixed(2), r) +
+    factorRow('Token propensity', `${(m.propensity_share * 100).toFixed(0)}% of ${esc(catLabel(r.category))} protocols in this snapshot already trade a token — categories whose kind rarely issues one are discounted`, 'propensity', m.propensity, '× ' + m.propensity.toFixed(2), r) +
     `<div class="factor-total"><span>Implied value</span><span class="tv">${moneyFull(r.implied_value_usd)}</span></div></section>` +
     `<section class="panel"><h3>Farm plan — what to do before it launches</h3><ol class="plan">` +
     r.farm_steps.map((st) => `<li><span class="n"></span><div><div class="step-text">${esc(st.text)}</div><div class="step-chips"><span>Cost <b>${esc(st.cost)}</b></span><span>Time <b>${esc(st.time)}</b></span></div></div></li>`).join('') +

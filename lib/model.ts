@@ -10,7 +10,14 @@
 //   base            = tvl_usd x category multiple        (the FDV peers of its kind actually get)
 //   momentum        = 1 + clamp(change_7d, -40, +80) / 250   (unknown change counts as 1.0)
 //   maturity        = 0.85 + 0.30 x min(age_years, 4) / 4    (unknown listing date counts as 1.0)
-//   implied value   = max(1, round(base x momentum x maturity))
+//   propensity      = 0.65 + 0.50 x the category's token-live share, the share of the category's
+//                   protocols whose token already trades, shrunk toward the global share the same
+//                   way: (live + 3 x globalShare) / (total + 3). The model's premise is that a
+//                   token comes one day; in categories where tokens are the norm (most lending
+//                   and DEX protocols have one) that premise is well supported, and in categories
+//                   that mostly manage other people's assets (risk curators, capital allocators)
+//                   it is not, so their implied values are discounted rather than read as pure TVL.
+//   implied value   = max(1, round(base x momentum x maturity x propensity))
 //
 // The board is the pre-token radar: a protocol is on it when the snapshot records no token for it
 // (no CoinGecko id and no symbol) and it is not a wrapped, staked or bridged product of a token that
@@ -43,7 +50,7 @@ export interface Snapshot {
 }
 
 /** The model's version label: the dashboard names it. */
-export const MODEL_VERSION = 'peer-multiple-2';
+export const MODEL_VERSION = 'peer-multiple-3';
 
 /** Categories that are products of a token that already trades, never a launch of their own. */
 const DERIVATIVE_CATEGORIES = new Set([
@@ -134,6 +141,47 @@ export function multipleFor(byCategory: Map<string, CategoryMultiple>, globalMed
   return byCategory.get(category ?? '') ?? { key: category ?? '', multiple: globalMedian, peers: 0, category_median: globalMedian };
 }
 
+/** One category's token propensity: its shrunk token-live share and the factor it maps to. */
+export interface CategoryPropensity {
+  key: string;
+  share: number;
+  factor: number;
+  total: number;
+  live: number;
+}
+
+/**
+ * Every category's token propensity, read off the snapshot itself: the share of the category's
+ * protocols that already record a token, shrunk toward the global share by the category's size,
+ * mapped onto a bounded factor. A category the snapshot does not carry counts as the global share.
+ */
+export function categoryPropensities(snapshot: Snapshot): { byCategory: Map<string, CategoryPropensity>; globalShare: number } {
+  const totals = new Map<string, { total: number; live: number }>();
+  let allTotal = 0;
+  let allLive = 0;
+  for (const p of snapshot.protocols) {
+    const key = p.category ?? '';
+    const cell = totals.get(key) ?? { total: 0, live: 0 };
+    cell.total += 1;
+    if (recordsToken(p)) cell.live += 1;
+    totals.set(key, cell);
+    allTotal += 1;
+    if (recordsToken(p)) allLive += 1;
+  }
+  const globalShare = allTotal === 0 ? 0 : allLive / allTotal;
+  const byCategory = new Map<string, CategoryPropensity>();
+  for (const [key, cell] of totals) {
+    const share = (cell.live + 3 * globalShare) / (cell.total + 3);
+    byCategory.set(key, { key, share, factor: 0.65 + 0.5 * share, total: cell.total, live: cell.live });
+  }
+  return { byCategory, globalShare };
+}
+
+/** The propensity a protocol's category carries, with the global share for an unseen category. */
+export function propensityFor(byCategory: Map<string, CategoryPropensity>, globalShare: number, category: string | null): CategoryPropensity {
+  return byCategory.get(category ?? '') ?? { key: category ?? '', share: globalShare, factor: 0.65 + 0.5 * globalShare, total: 0, live: 0 };
+}
+
 /** The momentum factor from a seven-day TVL change in per cent; an unknown change is neutral. */
 export function momentumFactor(change7d: number | null): number {
   if (change7d === null || !Number.isFinite(change7d)) return 1;
@@ -209,6 +257,8 @@ export interface BoardRow {
     peers: number;
     momentum: number;
     maturity: number;
+    propensity: number;
+    propensity_share: number;
     allocation_prior: number;
   };
   farm_steps: string[];
@@ -237,6 +287,7 @@ export interface CategoryMultipleRow {
   category: string;
   multiple: number;
   peers: number;
+  propensity: number;
 }
 
 /** Everything the dashboard needs: the board, the live set, and the model it runs. */
@@ -246,6 +297,7 @@ export interface RadarData {
   floor_usd: number;
   model_version: string;
   global_multiple: number;
+  global_token_share: number;
   category_multiples: CategoryMultipleRow[];
   watchlist_size: number;
   board_size: number;
@@ -265,13 +317,15 @@ export class SnapshotError extends Error {
 /** The protocols the board ranks, strongest first, with ranks 1..n. */
 export function buildBoard(snapshot: Snapshot): BoardRow[] {
   const { byCategory, globalMedian } = categoryMultiples(snapshot);
+  const propensities = categoryPropensities(snapshot);
   const watchlist = new Set(snapshot.watchlist);
   const scored = snapshot.protocols.filter(isEligible).map((p) => {
     const mult = multipleFor(byCategory, globalMedian, p.category);
     const momentum = momentumFactor(p.change_7d);
     const maturity = maturityFactor(snapshot.as_of, p.listed_at);
-    const implied = Math.max(1, Math.round(p.tvl_usd * mult.multiple * momentum * maturity.factor));
-    return { p, mult, momentum, maturity, implied };
+    const propensity = propensityFor(propensities.byCategory, propensities.globalShare, p.category);
+    const implied = Math.max(1, Math.round(p.tvl_usd * mult.multiple * momentum * maturity.factor * propensity.factor));
+    return { p, mult, momentum, maturity, propensity, implied };
   });
   scored.sort((a, b) => b.implied - a.implied || b.p.tvl_usd - a.p.tvl_usd || (a.p.slug < b.p.slug ? -1 : a.p.slug > b.p.slug ? 1 : 0));
   return scored.map((s, i) => ({
@@ -291,6 +345,8 @@ export function buildBoard(snapshot: Snapshot): BoardRow[] {
       peers: s.mult.peers,
       momentum: round4(s.momentum),
       maturity: round4(s.maturity.factor),
+      propensity: round4(s.propensity.factor),
+      propensity_share: round4(s.propensity.share),
       allocation_prior: allocationPrior(s.p.category),
     },
     farm_steps: farmSteps(s.p, s.maturity.age).map(stepText),
@@ -319,6 +375,7 @@ export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: Rada
   const board = buildBoard(snapshot);
   const live = liveRows(snapshot);
   const { byCategory, globalMedian } = categoryMultiples(snapshot);
+  const propensities = categoryPropensities(snapshot);
   const boardCategories = [...new Set(board.map((r) => r.category))];
   const radar: RadarData = {
     as_of: snapshot.as_of,
@@ -326,10 +383,12 @@ export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: Rada
     floor_usd: snapshot.floor_usd,
     model_version: MODEL_VERSION,
     global_multiple: round4(globalMedian),
+    global_token_share: round4(propensities.globalShare),
     category_multiples: boardCategories
       .map((category) => {
         const m = multipleFor(byCategory, globalMedian, category);
-        return { category: category ?? 'Uncategorised', multiple: round4(m.multiple), peers: m.peers };
+        const prop = propensityFor(propensities.byCategory, propensities.globalShare, category);
+        return { category: category ?? 'Uncategorised', multiple: round4(m.multiple), peers: m.peers, propensity: round4(prop.factor) };
       })
       .sort((a, b) => (a.category < b.category ? -1 : a.category > b.category ? 1 : 0)),
     watchlist_size: snapshot.watchlist.length,
