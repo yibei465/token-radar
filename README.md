@@ -21,8 +21,11 @@ implied value = TVL × peer multiple × momentum × maturity × propensity
 
 - **Peer multiple** — for each category, the median market-cap / TVL ratio of the protocols in that
   category whose token already trades (ratios winsorized to [0.02, 3]). A category with at least 3
-  traded peers uses its own median; with fewer, the median is shrunk toward the global median:
-  `(n · catMedian + 3 · globalMedian) / (n + 3)`.
+  traded peers uses its own median. With fewer, the median is shrunk toward the global median by
+  credibility: the traded peers' TVL against the TVL of the category's protocols still waiting for
+  a token, `w = peerTVL / (peerTVL + waitingTVL)`. One $12M peer does not price $8B of curators
+  (w near 0), while two multi-billion peers do price restaking (w near 1) — the dollars of
+  evidence, not the headcount, decide how much of the category's own median survives.
 - **Momentum** — `1 + clamp(change_7d, −40, +80) / 250`; an unreported change counts as 1.0.
 - **Maturity** — `0.85 + 0.30 · min(age_years, 4) / 4` from the day DefiLlama began tracking the
   protocol; an unknown listing date counts as 1.0.

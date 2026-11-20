@@ -64,9 +64,9 @@ function renderChrome() {
     `<div>Watchlist ${R.watchlist_size}/${R.watchlist_size} covered</div>`;
   document.getElementById('model-panel').innerHTML =
     `<div class="model-card"><div><h2>How implied value works</h2>` +
-    `<p>Each protocol is priced the way its own category actually trades: the multiple is the median market-cap / TVL of the category's live-token protocols in this snapshot (global median ${R.global_multiple.toFixed(2)}x), nudged by its 7-day TVL momentum and by how long it has run with no token, then scaled by its category's token propensity — the share of that category's protocols whose token already trades (${(R.global_token_share * 100).toFixed(0)}% across the snapshot), so categories that mostly manage other people's assets are not read as pure TVL. The est. pool applies a category allocation prior — the share of a launch typically reserved for the community that farmed it.</p>` +
+    `<p>Each protocol is priced the way its own category actually trades: the multiple is the median market-cap / TVL of the category's live-token protocols in this snapshot (global median ${R.global_multiple.toFixed(2)}x), nudged by its 7-day TVL momentum and by how long it has run with no token, then scaled by its category's token propensity — the share of that category's protocols whose token already trades (${(R.global_token_share * 100).toFixed(0)}% across the snapshot), so categories that mostly manage other people's assets are not read as pure TVL. A category with fewer than three traded peers keeps only as much of its own median as its peers' TVL earns against the TVL still waiting for a token — one small peer never prices billions. The est. pool applies a category allocation prior — the share of a launch typically reserved for the community that farmed it.</p>` +
     `<details class="multiples"><summary>Peer multiples and propensity by category, from this snapshot</summary><div class="mult-grid">` +
-    R.category_multiples.map((c) => `<span>${esc(c.category)} <b>×${c.multiple.toFixed(2)}</b> <i>(${c.peers} peer${c.peers === 1 ? '' : 's'})</i> · prop <b>×${c.propensity.toFixed(2)}</b></span>`).join('') +
+    R.category_multiples.map((c) => `<span>${esc(c.category)} <b>×${c.multiple.toFixed(2)}</b> <i>(${c.peers} peer${c.peers === 1 ? '' : 's'}${c.peers < 3 ? `, ${money(c.peer_tvl_usd)} peer TVL` : ''})</i> · prop <b>×${c.propensity.toFixed(2)}</b></span>`).join('') +
     `</div></details></div>` +
     `<div class="formula"><b>implied</b> <span class="op">=</span> TVL <span class="op">×</span> <b>peer multiple</b> <span class="op">×</span> <b>momentum</b> <span class="op">×</span> <b>maturity</b> <span class="op">×</span> <b>propensity</b></div></div>`;
   document.getElementById('foot').textContent =
@@ -183,10 +183,12 @@ function barWidth(kind, v, row) {
   if (kind === 'propensity') return Math.max(3, Math.min(100, ((v - 0.65) / 0.5) * 100));
   return Math.max(3, Math.min(100, ((v - 0.85) / 0.3) * 100));
 }
-/** How a category's multiple was earned: its own median, a shrunk median, or the global fallback. */
+/** How a category's multiple was earned: its own median when three or more traded peers speak for
+ *  the category, otherwise the median shrunk toward the global one by the dollars of evidence —
+ *  the peers' TVL against the TVL still waiting for a token. */
 function peerExplain(m, category) {
   if (m.peers >= 3) return `median of ${m.peers} live-token ${category} peers in this snapshot`;
-  if (m.peers >= 1) return `only ${m.peers} live-token ${category} peer${m.peers === 1 ? '' : 's'} — shrunk toward the global median`;
+  if (m.peers >= 1) return `only ${m.peers} live-token ${category} peer${m.peers === 1 ? '' : 's'} holding ${money(m.peer_tvl_usd)} of TVL against ${money(m.waiting_tvl_usd)} still unpriced — kept ${Math.round(m.credibility * 100)}% of its own median, the rest global`;
   return `no live-token ${category} peers — the global median multiple`;
 }
 function factorRow(label, explain, kind, v, shown, row) {
@@ -206,7 +208,7 @@ function renderDetail(slug) {
     `<div class="stat"><div class="k">Est. airdrop pool</div><div class="v">${moneyFull(r.pool_usd)}</div><div class="s">${(m.allocation_prior * 100).toFixed(0)}% community allocation prior</div></div>` +
     `<div class="stat"><div class="k">TVL</div><div class="v">${moneyFull(r.tvl_usd)}</div><div class="s">7d change ${r.change_7d === null ? 'not recorded' : (r.change_7d > 0 ? '+' : '') + r.change_7d.toFixed(1) + '%'}</div></div>` +
     `<div class="stat"><div class="k">Running with no token</div><div class="v">${ageTxt}</div><div class="s">tracked since ${esc(r.listed_at || '—')}</div></div></div>` +
-    `<section class="panel"><h3>How this value is built</h3>` +
+    `<div class="detail-grid"><section class="panel"><h3>How this value is built</h3>` +
     factorRow('TVL base', `${moneyFull(r.tvl_usd)} locked in the protocol`, 'base', 0, moneyFull(r.tvl_usd), r) +
     factorRow('Peer multiple', esc(peerExplain(m, catLabel(r.category))), 'multiple', m.multiple, '× ' + m.multiple.toFixed(2), r) +
     factorRow('Momentum', 'its 7-day TVL change, damped', 'momentum', m.momentum, '× ' + m.momentum.toFixed(2), r) +
@@ -215,7 +217,7 @@ function renderDetail(slug) {
     `<div class="factor-total"><span>Implied value</span><span class="tv">${moneyFull(r.implied_value_usd)}</span></div></section>` +
     `<section class="panel"><h3>Farm plan — what to do before it launches</h3><ol class="plan">` +
     r.farm_steps.map((st) => `<li><span class="n"></span><div><div class="step-text">${esc(st.text)}</div><div class="step-chips"><span>Cost <b>${esc(st.cost)}</b></span><span>Time <b>${esc(st.time)}</b></span></div></div></li>`).join('') +
-    `</ol></section>`;
+    `</ol></section></div>`;
   window.scrollTo(0, 0);
 }
 

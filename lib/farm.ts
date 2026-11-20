@@ -258,6 +258,36 @@ function fill(template: string, p: FarmProtocol, pos: string, chainLabel: string
   return template.replaceAll('{pos}', pos).replaceAll('{chain}', chainLabel).replaceAll('{name}', p.name);
 }
 
+/** Where the claim is usually checked, by category: airdrops are claimed where the kind of
+ *  protocol tracks its farmers, not on one generic page. Anything unlisted uses the points page. */
+const CLAIM_HINT: Record<string, string> = {
+  'Chain': "the chain's own points or ecosystem hub",
+  'Prediction Market': "the market's own rewards page once your positions have settled",
+  'Lending': "the protocol's own rewards or points tab",
+  'Dexs': "the protocol's own points or fee-share page",
+  'Yield': "the vault's own rewards page",
+  'Yield Aggregator': "the vault's own rewards page",
+  'Staking Pool': "the pool's own staking dashboard",
+  'Restaking': "the protocol's own points page",
+  'RWA': "the issuer's own investor portal",
+};
+
+/** The claim hint for a category: its table entry, or the generic points page. */
+function claimHint(category: string | null): string {
+  if (category !== null && CLAIM_HINT[category]) return CLAIM_HINT[category];
+  return "the protocol's own points or rewards page";
+}
+
+/** How the first money gets there, by chain: bridging to an L2 and funding a Solana wallet are
+ *  different first moves, and a farmer who skips the bridge never arrives at all. */
+function setupStep(chain: string | null, gas: GasBand): string {
+  if (chain === 'Solana') return `Set up a fresh Solana wallet, fund it with SOL for gas plus the position, and keep its seed phrase offline`;
+  if (chain === 'Bitcoin') return `Set up a fresh wallet that holds BTC, fund it with the position plus a little BTC for fees, and keep its seed phrase offline`;
+  if (chain !== null && L2_CHAINS.has(chain)) return `Set up a fresh wallet on ${chain}, bridge the position from Ethereum through the chain's official bridge, and keep its seed phrase offline`;
+  if (chain === 'Ethereum') return `Set up a fresh wallet for this farm, fund it with ETH for gas plus the position on Ethereum mainnet, and keep its seed phrase offline`;
+  return `Set up a fresh wallet for this farm, fund it on ${gas.label} with the position plus gas money, and keep its seed phrase offline`;
+}
+
 /**
  * A protocol's farm plan: five steps, each an action with a cost and a time, derived from the
  * protocol's category, first chain, TVL and age.
@@ -270,7 +300,7 @@ export function farmSteps(p: FarmProtocol, ageDays: number | null): FarmStep[] {
   const book = (p.category !== null && PLAYBOOKS[p.category]) || GENERIC;
   return [
     {
-      text: `Set up a fresh wallet for this farm, fund it on ${gas.label} with the position plus gas money, and keep its seed phrase offline`,
+      text: setupStep(chain, gas),
       cost: `${gas.perTx} for the first transaction on ${gas.label}`,
       time: '10 minutes',
     },
@@ -290,7 +320,7 @@ export function farmSteps(p: FarmProtocol, ageDays: number | null): FarmStep[] {
       time: '15 minutes, once',
     },
     {
-      text: `Hold the position for at least ${hold} days, then check the protocol's own points or rewards page and claim only from the link it publishes`,
+      text: `Hold the position for at least ${hold} days, then check ${claimHint(p.category)} and claim only from the link it publishes`,
       cost: `the ${pos.label} stays in the position; never pay a fee to claim`,
       time: `${hold} days holding, 10 minutes to check`,
     },

@@ -5,8 +5,12 @@
 //
 //   peer multiple   for each category, the median market-cap / TVL ratio of the protocols in that
 //                   category whose token already trades (ratios winsorized to [0.02, 3]). A category
-//                   with at least 3 traded peers uses its own median; with fewer, the median is
-//                   shrunk toward the global median: (n * catMedian + 3 * globalMedian) / (n + 3).
+//                   with at least 3 traded peers is priced by its own median. With fewer, the median
+//                   is shrunk toward the global median by credibility: the traded peers' TVL against
+//                   the TVL of the category's protocols still waiting for a token, w = peerTVL /
+//                   (peerTVL + waitingTVL). One $12M peer does not price $8B of curators (w near 0),
+//                   while two multi-billion peers do price restaking (w near 1) — the dollars of
+//                   evidence, not the headcount, decide how much of the category's own median survives.
 //   base            = tvl_usd x category multiple        (the FDV peers of its kind actually get)
 //   momentum        = 1 + clamp(change_7d, -40, +80) / 250   (unknown change counts as 1.0)
 //   maturity        = 0.85 + 0.30 x min(age_years, 4) / 4    (unknown listing date counts as 1.0)
@@ -50,7 +54,7 @@ export interface Snapshot {
 }
 
 /** The model's version label: the dashboard names it. */
-export const MODEL_VERSION = 'peer-multiple-3';
+export const MODEL_VERSION = 'peer-multiple-4';
 
 /** Categories that are products of a token that already trades, never a launch of their own. */
 const DERIVATIVE_CATEGORIES = new Set([
@@ -104,17 +108,23 @@ export function median(values: number[]): number {
   return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
 
-/** One category's peer multiple: how the category is keyed, its multiple and how many peers back it. */
+/** One category's peer multiple: how the category is keyed, its multiple, how many peers back it,
+ *  how much TVL those peers carry, how much TVL is still waiting for a token, and the credibility
+ *  weight the category's own median kept (1 when three or more peers speak for the category). */
 export interface CategoryMultiple {
   key: string;
   multiple: number;
   peers: number;
   category_median: number;
+  peer_tvl_usd: number;
+  waiting_tvl_usd: number;
+  credibility: number;
 }
 
 /** Every category's peer multiple, read off the snapshot's token-live protocols. */
 export function categoryMultiples(snapshot: Snapshot): { byCategory: Map<string, CategoryMultiple>; globalMedian: number } {
   const ratiosByCategory = new Map<string, number[]>();
+  const peerTvlByCategory = new Map<string, number>();
   const all: number[] = [];
   for (const p of snapshot.protocols) {
     if (p.mcap_usd === null || p.tvl_usd <= 0) continue;
@@ -123,22 +133,32 @@ export function categoryMultiples(snapshot: Snapshot): { byCategory: Map<string,
     const list = ratiosByCategory.get(key) ?? [];
     list.push(ratio);
     ratiosByCategory.set(key, list);
+    peerTvlByCategory.set(key, (peerTvlByCategory.get(key) ?? 0) + p.tvl_usd);
     all.push(ratio);
+  }
+  const waitingTvlByCategory = new Map<string, number>();
+  for (const p of snapshot.protocols) {
+    if (!isEligible(p)) continue;
+    const key = p.category ?? '';
+    waitingTvlByCategory.set(key, (waitingTvlByCategory.get(key) ?? 0) + p.tvl_usd);
   }
   const globalMedian = median(all);
   const byCategory = new Map<string, CategoryMultiple>();
   for (const [key, ratios] of ratiosByCategory) {
     const catMedian = median(ratios);
     const n = ratios.length;
-    const multiple = n >= 3 ? catMedian : (n * catMedian + 3 * globalMedian) / (n + 3);
-    byCategory.set(key, { key, multiple, peers: n, category_median: catMedian });
+    const peerTvl = peerTvlByCategory.get(key) ?? 0;
+    const waitingTvl = waitingTvlByCategory.get(key) ?? 0;
+    const credibility = n >= 3 ? 1 : peerTvl / (peerTvl + waitingTvl);
+    const multiple = n >= 3 ? catMedian : credibility * catMedian + (1 - credibility) * globalMedian;
+    byCategory.set(key, { key, multiple, peers: n, category_median: catMedian, peer_tvl_usd: peerTvl, waiting_tvl_usd: waitingTvl, credibility });
   }
   return { byCategory, globalMedian };
 }
 
 /** The multiple a protocol's category carries, with the global median for a category with no peers. */
 export function multipleFor(byCategory: Map<string, CategoryMultiple>, globalMedian: number, category: string | null): CategoryMultiple {
-  return byCategory.get(category ?? '') ?? { key: category ?? '', multiple: globalMedian, peers: 0, category_median: globalMedian };
+  return byCategory.get(category ?? '') ?? { key: category ?? '', multiple: globalMedian, peers: 0, category_median: globalMedian, peer_tvl_usd: 0, waiting_tvl_usd: 0, credibility: 0 };
 }
 
 /** One category's token propensity: its shrunk token-live share and the factor it maps to. */
@@ -255,6 +275,9 @@ export interface BoardRow {
   model: {
     multiple: number;
     peers: number;
+    peer_tvl_usd: number;
+    waiting_tvl_usd: number;
+    credibility: number;
     momentum: number;
     maturity: number;
     propensity: number;
@@ -287,6 +310,8 @@ export interface CategoryMultipleRow {
   category: string;
   multiple: number;
   peers: number;
+  peer_tvl_usd: number;
+  credibility: number;
   propensity: number;
 }
 
@@ -343,6 +368,9 @@ export function buildBoard(snapshot: Snapshot): BoardRow[] {
     model: {
       multiple: round4(s.mult.multiple),
       peers: s.mult.peers,
+      peer_tvl_usd: Math.round(s.mult.peer_tvl_usd),
+      waiting_tvl_usd: Math.round(s.mult.waiting_tvl_usd),
+      credibility: round4(s.mult.credibility),
       momentum: round4(s.momentum),
       maturity: round4(s.maturity.factor),
       propensity: round4(s.propensity.factor),
@@ -388,7 +416,7 @@ export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: Rada
       .map((category) => {
         const m = multipleFor(byCategory, globalMedian, category);
         const prop = propensityFor(propensities.byCategory, propensities.globalShare, category);
-        return { category: category ?? 'Uncategorised', multiple: round4(m.multiple), peers: m.peers, propensity: round4(prop.factor) };
+        return { category: category ?? 'Uncategorised', multiple: round4(m.multiple), peers: m.peers, peer_tvl_usd: Math.round(m.peer_tvl_usd), credibility: round4(m.credibility), propensity: round4(prop.factor) };
       })
       .sort((a, b) => (a.category < b.category ? -1 : a.category > b.category ? 1 : 0)),
     watchlist_size: snapshot.watchlist.length,
