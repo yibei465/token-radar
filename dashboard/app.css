@@ -33,7 +33,7 @@ a:hover { text-decoration: underline; }
 
 /* Masthead */
 .masthead { background: linear-gradient(180deg, #131a23, var(--ink-2)); border-bottom: 1px solid var(--line); }
-.masthead-in { max-width: 1240px; margin: 0 auto; padding: 26px 28px 6px; display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; }
+.masthead-in { max-width: 1240px; margin: 0 auto; padding: 18px 28px 6px; display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; }
 .brand { display: flex; gap: 14px; align-items: flex-start; }
 .brand-mark {
   flex: none; width: 38px; height: 38px; margin-top: 4px; border-radius: 50%;
@@ -45,7 +45,7 @@ a:hover { text-decoration: underline; }
     radial-gradient(circle at 50% 50%, transparent 0 15px, rgba(242, 169, 59, .22) 16px, transparent 17px);
 }
 h1 { margin: 0; font-size: 30px; letter-spacing: .2px; font-weight: 700; }
-.tagline { margin: 5px 0 0; color: var(--muted); max-width: 640px; font-size: 14.5px; }
+.tagline { margin: 5px 0 0; color: var(--muted); max-width: 820px; font-size: 14.5px; }
 .masthead-meta { text-align: right; color: var(--muted); font-size: 13px; flex: none; padding-top: 6px; }
 .masthead-meta .big { color: var(--text); font-size: 15px; font-weight: 600; }
 .masthead-meta div { margin-bottom: 3px; }
@@ -61,9 +61,10 @@ h1 { margin: 0; font-size: 30px; letter-spacing: .2px; font-weight: 700; }
 .formula { font-family: var(--mono); font-size: 14.5px; color: var(--text); white-space: nowrap; }
 .formula b { color: var(--amber-soft); font-weight: 600; }
 .formula .op { color: var(--faint); padding: 0 2px; }
-.multiples { margin-top: 10px; }
-.multiples summary { cursor: pointer; color: var(--amber-soft); font-size: 13px; font-weight: 600; }
-.mult-grid { display: flex; flex-wrap: wrap; gap: 5px 16px; margin-top: 8px; }
+.multiples { margin-top: 10px; grid-column: 1 / -1; }
+.mult-head { color: var(--amber-soft); font-size: 13px; font-weight: 600; }
+.mult-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px 16px; margin-top: 8px; }
+.mult-foot { margin-top: 7px; font-size: 12.5px; color: var(--faint); }
 .mult-grid span { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .mult-grid b { color: var(--text); font-weight: 600; }
 .mult-grid i { color: var(--faint); font-style: normal; }
@@ -75,7 +76,7 @@ body.is-detail .tagline { display: none; }
 body.is-detail h1 { font-size: 22px; }
 body.is-detail .brand-mark { width: 28px; height: 28px; }
 body.is-detail main { padding-top: 12px; }
-body.is-detail .back { margin-bottom: 8px; }
+body.is-detail .back { margin-bottom: 6px; }
 
 /* Layout */
 main { max-width: 1240px; margin: 0 auto; padding: 20px 28px 8px; }
@@ -135,7 +136,7 @@ td.right, th.right { text-align: right; }
 .detail-head { display: flex; flex-wrap: wrap; gap: 8px 26px; align-items: baseline; margin-bottom: 4px; }
 .detail-head h2 { margin: 0; font-size: 26px; }
 .detail-head .sub { color: var(--muted); font-size: 14px; }
-.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 12px 0; }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 8px 0 6px; }
 .stat { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 11px 14px; }
 .stat .k { font-size: 11.5px; text-transform: uppercase; letter-spacing: .9px; color: var(--faint); }
 .stat .v { font-size: 19px; font-weight: 650; margin-top: 3px; }
@@ -145,8 +146,8 @@ td.right, th.right { text-align: right; }
 /* Detail view: the breakdown and the farm plan sit side by side on a wide screen, so a reader
    sees both the value's working and what to do about it without scrolling; they stack on narrow. */
 .detail-grid { display: grid; grid-template-columns: 1.12fr 1fr; gap: 16px; align-items: start; }
-.detail-grid .panel { margin: 0; padding: 13px 16px; }
-.panel h3 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: 1.3px; color: var(--amber); }
+.detail-grid .panel { margin: 0; padding: 11px 16px; }
+.panel h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 1.3px; color: var(--amber); }
 .factor { display: grid; grid-template-columns: 190px 1fr 110px; gap: 12px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line-soft); }
 .factor:last-of-type { border-bottom: 0; }
 .factor .fk { color: var(--muted); font-size: 13.5px; }
@@ -155,16 +156,19 @@ td.right, th.right { text-align: right; }
 .bar i { display: block; height: 100%; background: var(--amber); border-radius: 99px; }
 .factor-total { display: flex; justify-content: space-between; align-items: baseline; margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--line); }
 .factor-total .tv { font-size: 22px; font-weight: 700; color: var(--amber-soft); }
+/* The traded peers a multiple is taken from, named under the factor row so the number is checkable. */
+.peers-line { font-size: 12.5px; color: var(--muted); padding: 1px 0 9px; border-bottom: 1px solid var(--line-soft); line-height: 1.5; }
+.peers-line b { color: var(--text); font-weight: 600; }
 ol.plan { margin: 0; padding: 0; list-style: none; counter-reset: step; }
-ol.plan li { display: grid; grid-template-columns: 30px 1fr; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
+ol.plan li { display: grid; grid-template-columns: 30px 1fr; gap: 12px; padding: 5px 0; border-bottom: 1px solid var(--line-soft); }
 ol.plan li:last-child { border-bottom: 0; }
 ol.plan .n {
   counter-increment: step; width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--amber);
   color: var(--amber-soft); font-family: var(--mono); font-size: 13px; display: flex; align-items: center; justify-content: center; margin-top: 1px;
 }
 ol.plan .n::before { content: counter(step); }
-ol.plan .step-text { font-size: 14.5px; }
-.step-chips { margin-top: 6px; display: flex; gap: 7px; flex-wrap: wrap; }
+ol.plan .step-text { font-size: 14px; }
+.step-chips { margin-top: 4px; display: flex; gap: 7px; flex-wrap: wrap; }
 .step-chips span { font-size: 12px; color: var(--muted); background: var(--ink-2); border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; }
 .step-chips span b { color: var(--text); font-weight: 600; }
 @media (max-width: 760px) {

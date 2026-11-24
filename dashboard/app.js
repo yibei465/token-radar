@@ -64,11 +64,11 @@ function renderChrome() {
     `<div>Watchlist ${R.watchlist_size}/${R.watchlist_size} covered</div>`;
   document.getElementById('model-panel').innerHTML =
     `<div class="model-card"><div><h2>How implied value works</h2>` +
-    `<p>Each protocol is priced the way its own category actually trades: the multiple is the median market-cap / TVL of the category's live-token protocols in this snapshot (global median ${R.global_multiple.toFixed(2)}x), nudged by its 7-day TVL momentum and by how long it has run with no token, then scaled by its category's token propensity — the share of that category's protocols whose token already trades (${(R.global_token_share * 100).toFixed(0)}% across the snapshot), so categories that mostly manage other people's assets are not read as pure TVL. A category with fewer than three traded peers keeps only as much of its own median as its peers' TVL earns against the TVL still waiting for a token — one small peer never prices billions. The est. pool applies a category allocation prior — the share of a launch typically reserved for the community that farmed it.</p>` +
-    `<details class="multiples"><summary>Peer multiples and propensity by category, from this snapshot</summary><div class="mult-grid">` +
-    R.category_multiples.map((c) => `<span>${esc(c.category)} <b>×${c.multiple.toFixed(2)}</b> <i>(${c.peers} peer${c.peers === 1 ? '' : 's'}${c.peers < 3 ? `, ${money(c.peer_tvl_usd)} peer TVL` : ''})</i> · prop <b>×${c.propensity.toFixed(2)}</b></span>`).join('') +
-    `</div></details></div>` +
-    `<div class="formula"><b>implied</b> <span class="op">=</span> TVL <span class="op">×</span> <b>peer multiple</b> <span class="op">×</span> <b>momentum</b> <span class="op">×</span> <b>maturity</b> <span class="op">×</span> <b>propensity</b></div></div>`;
+    `<p>Each protocol is priced the way its own category actually trades: the multiple is the median market-cap / TVL of the category's live-token protocols in this snapshot (global median ${R.global_multiple.toFixed(2)}x), nudged by 7-day TVL momentum, maturity and its category's token propensity — the share of that category's protocols whose token already trades (${(R.global_token_share * 100).toFixed(0)}% across the snapshot), so categories that mostly manage other people's assets are not read as pure TVL. With fewer than three traded peers a category keeps only as much of its own median as its peers' TVL earns against the TVL still waiting — one small peer never prices billions — and a category with nothing waiting keeps none of it.</p></div>` +
+    `<div class="formula"><b>implied</b> <span class="op">=</span> TVL <span class="op">×</span> <b>peer multiple</b> <span class="op">×</span> <b>momentum</b> <span class="op">×</span> <b>maturity</b> <span class="op">×</span> <b>propensity</b></div>` +
+    `<div class="multiples"><div class="mult-head">Peer multiples and propensity by category, from this snapshot</div><div class="mult-grid">` +
+    R.category_multiples.filter((c) => c.peers > 0).map((c) => `<span>${esc(c.category)} <b>×${c.multiple.toFixed(2)}</b> <i>(${c.peers} peer${c.peers === 1 ? '' : 's'})</i> · prop <b>×${c.propensity.toFixed(2)}</b></span>`).join('') +
+    `</div><div class="mult-foot">${R.category_multiples.filter((c) => c.peers === 0).length} more categor${R.category_multiples.filter((c) => c.peers === 0).length === 1 ? 'y has' : 'ies have'} no traded peers and carry the global median ×${R.global_multiple.toFixed(2)}. Est. pool is the category's community allocation share of the implied value.</div></div></div>`;
   document.getElementById('foot').textContent =
     `Data: ${R.source}. Implied values are this radar's own model estimates (model ${R.model_version}), not predictions that a token will launch. A protocol listed here records no token in the snapshot; that is DefiLlama's record, not proof none exists.`;
 }
@@ -106,7 +106,7 @@ function renderBoard(s) {
     `<span class="result-count" id="count"></span></div>` +
     (s.tab === 'live'
       ? `<p class="note"><b>Already trading.</b> These protocols have a token in the snapshot, so the radar does not rank them — it shows the market's own market cap. The pre-token board is where the launches have not happened yet.</p>`
-      : `<p class="note">Ranked by implied value under the model above. <b>Watchlist</b> rows are the snapshot's ${R.watchlist_size} largest pre-token protocols (TVL at or above ${money(R.floor_usd)}); the rest are the early finds below that floor. Click any row for its model breakdown and farm plan.</p>`) +
+      : `<p class="note">Ranked by implied value — click any row for its model breakdown and farm plan. <b>Watchlist</b> rows are the snapshot's ${R.watchlist_size} largest pre-token protocols (TVL at or above ${money(R.floor_usd)}).</p>`) +
     `<table class="board"><thead><tr>${cols.map(([k, label, cls]) => `<th class="${cls}" data-sort="${k}">${label}${sortMark(s, k)}</th>`).join('')}</tr></thead><tbody id="tbody"></tbody></table>`;
   wireBoard();
   updateTable();
@@ -191,6 +191,19 @@ function peerExplain(m, category) {
   if (m.peers >= 1) return `only ${m.peers} live-token ${category} peer${m.peers === 1 ? '' : 's'} holding ${money(m.peer_tvl_usd)} of TVL against ${money(m.waiting_tvl_usd)} still unpriced — kept ${Math.round(m.credibility * 100)}% of its own median, the rest global`;
   return `no live-token ${category} peers — the global median multiple`;
 }
+/** The traded peers a multiple is taken from, named so the number can be checked: the largest
+ *  peers by TVL with their market-cap / TVL ratios (ratios are winsorized to [0.02, 3] before
+ *  the median is taken, and a ratio that hit the cap says so). */
+function peerLine(category) {
+  const row = (R.category_peers || []).find((c) => c.category === (category || 'Uncategorised'));
+  if (!row || row.total === 0) return '';
+  const shown = row.peers.map((p) => {
+    const tag = p.raw_ratio > 3 ? ' capped' : p.raw_ratio < 0.02 ? ' floored' : '';
+    return `<b>${esc(p.name)}</b> ×${p.ratio.toFixed(2)}${tag} on ${money(p.tvl_usd)} TVL`;
+  }).join(' · ');
+  const more = row.total > row.peers.length ? ` · and ${row.total - row.peers.length} more` : '';
+  return `<div class="peers-line">Peers behind this multiple — median of ${row.total} (own median ×${row.median.toFixed(2)}): ${shown}${more}</div>`;
+}
 function factorRow(label, explain, kind, v, shown, row) {
   return `<div class="factor"><div class="fk">${label}<br><span style="color:var(--faint);font-size:12px">${explain}</span></div><div class="bar"><i style="width:${barWidth(kind, v, row).toFixed(1)}%"></i></div><div class="fv">${shown}</div></div>`;
 }
@@ -211,6 +224,7 @@ function renderDetail(slug) {
     `<div class="detail-grid"><section class="panel"><h3>How this value is built</h3>` +
     factorRow('TVL base', `${moneyFull(r.tvl_usd)} locked in the protocol`, 'base', 0, moneyFull(r.tvl_usd), r) +
     factorRow('Peer multiple', esc(peerExplain(m, catLabel(r.category))), 'multiple', m.multiple, '× ' + m.multiple.toFixed(2), r) +
+    peerLine(r.category) +
     factorRow('Momentum', 'its 7-day TVL change, damped', 'momentum', m.momentum, '× ' + m.momentum.toFixed(2), r) +
     factorRow('Maturity', 'how long it has run with no token', 'maturity', m.maturity, '× ' + m.maturity.toFixed(2), r) +
     factorRow('Token propensity', `${(m.propensity_share * 100).toFixed(0)}% of ${esc(catLabel(r.category))} protocols in this snapshot already trade a token — categories whose kind rarely issues one are discounted`, 'propensity', m.propensity, '× ' + m.propensity.toFixed(2), r) +

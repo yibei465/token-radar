@@ -288,11 +288,22 @@ function setupStep(chain: string | null, gas: GasBand): string {
   return `Set up a fresh wallet for this farm, fund it on ${gas.label} with the position plus gas money, and keep its seed phrase offline`;
 }
 
+/** A short money label for a step's own figures ($1.58B, $9.4M, $12.4K). */
+export function moneyShort(n: number): string {
+  if (n >= 1e9) return '$' + (n / 1e9).toFixed(2) + 'B';
+  if (n >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return '$' + (n / 1e3).toFixed(1) + 'K';
+  return '$' + Math.round(n);
+}
+
 /**
  * A protocol's farm plan: five steps, each an action with a cost and a time, derived from the
- * protocol's category, first chain, TVL and age.
+ * protocol's category, first chain, TVL and age — and from the model's own estimate of its
+ * community pool, so the plan is this protocol's, not a template with a name swapped in: the
+ * opening step names the TVL already sitting in it, and the claim step names the pool the
+ * model estimates for it.
  */
-export function farmSteps(p: FarmProtocol, ageDays: number | null): FarmStep[] {
+export function farmSteps(p: FarmProtocol, ageDays: number | null, poolUsd: number | null = null): FarmStep[] {
   const chain = firstChain(p);
   const gas = gasBand(chain);
   const pos = positionFor(p.tvl_usd);
@@ -305,7 +316,7 @@ export function farmSteps(p: FarmProtocol, ageDays: number | null): FarmStep[] {
       time: '10 minutes',
     },
     {
-      text: fill(book.open, p, pos.label, gas.label),
+      text: `${fill(book.open, p, pos.label, gas.label)}. ${p.name} already holds ${moneyShort(p.tvl_usd)} in total, so the position is a small slice of a live book, not a test deposit.`,
       cost: `${pos.label} of capital, ${gas.perTx} a transaction on ${gas.label}`,
       time: '20 minutes to set up',
     },
@@ -320,7 +331,7 @@ export function farmSteps(p: FarmProtocol, ageDays: number | null): FarmStep[] {
       time: '15 minutes, once',
     },
     {
-      text: `Hold the position for at least ${hold} days, then check ${claimHint(p.category)} and claim only from the link it publishes`,
+      text: `Hold the position for at least ${hold} days, then check ${claimHint(p.category)} and claim only from the link it publishes${poolUsd !== null ? ` — this radar estimates a ${moneyShort(poolUsd)} community pool if ${p.name} launches at the model's value` : ''}`,
       cost: `the ${pos.label} stays in the position; never pay a fee to claim`,
       time: `${hold} days holding, 10 minutes to check`,
     },

@@ -11,6 +11,10 @@
 //                   (peerTVL + waitingTVL). One $12M peer does not price $8B of curators (w near 0),
 //                   while two multi-billion peers do price restaking (w near 1) — the dollars of
 //                   evidence, not the headcount, decide how much of the category's own median survives.
+//                   A category with nothing still waiting for a token (waitingTVL 0) keeps none of
+//                   its own median, whatever its peers say: its multiple is the global median. That
+//                   closes the v4 hole where two observations — one of them at the winsor cap — priced
+//                   a whole category (Token Locker's 1.53x) that no board row ever used.
 //   base            = tvl_usd x category multiple        (the FDV peers of its kind actually get)
 //   momentum        = 1 + clamp(change_7d, -40, +80) / 250   (unknown change counts as 1.0)
 //   maturity        = 0.85 + 0.30 x min(age_years, 4) / 4    (unknown listing date counts as 1.0)
@@ -54,7 +58,7 @@ export interface Snapshot {
 }
 
 /** The model's version label: the dashboard names it. */
-export const MODEL_VERSION = 'peer-multiple-4';
+export const MODEL_VERSION = 'peer-multiple-5';
 
 /** Categories that are products of a token that already trades, never a launch of their own. */
 const DERIVATIVE_CATEGORIES = new Set([
@@ -108,9 +112,20 @@ export function median(values: number[]): number {
   return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
 
+/** One traded peer behind a category's multiple: its name, its winsorized ratio (the one the
+ *  median is taken over), the raw ratio before winsorizing, and its TVL. */
+export interface CategoryPeer {
+  slug: string;
+  name: string;
+  ratio: number;
+  raw_ratio: number;
+  tvl_usd: number;
+}
+
 /** One category's peer multiple: how the category is keyed, its multiple, how many peers back it,
  *  how much TVL those peers carry, how much TVL is still waiting for a token, and the credibility
- *  weight the category's own median kept (1 when three or more peers speak for the category). */
+ *  weight the category's own median kept (1 when three or more peers speak for the category, 0
+ *  when nothing is waiting for a token), plus the peers themselves, largest TVL first. */
 export interface CategoryMultiple {
   key: string;
   multiple: number;
@@ -119,20 +134,26 @@ export interface CategoryMultiple {
   peer_tvl_usd: number;
   waiting_tvl_usd: number;
   credibility: number;
+  peers_detail: CategoryPeer[];
 }
 
 /** Every category's peer multiple, read off the snapshot's token-live protocols. */
 export function categoryMultiples(snapshot: Snapshot): { byCategory: Map<string, CategoryMultiple>; globalMedian: number } {
   const ratiosByCategory = new Map<string, number[]>();
+  const peersByCategory = new Map<string, CategoryPeer[]>();
   const peerTvlByCategory = new Map<string, number>();
   const all: number[] = [];
   for (const p of snapshot.protocols) {
     if (p.mcap_usd === null || p.tvl_usd <= 0) continue;
-    const ratio = Math.min(3, Math.max(0.02, p.mcap_usd / p.tvl_usd));
+    const rawRatio = p.mcap_usd / p.tvl_usd;
+    const ratio = Math.min(3, Math.max(0.02, rawRatio));
     const key = p.category ?? '';
     const list = ratiosByCategory.get(key) ?? [];
     list.push(ratio);
     ratiosByCategory.set(key, list);
+    const peers = peersByCategory.get(key) ?? [];
+    peers.push({ slug: p.slug, name: p.name, ratio, raw_ratio: rawRatio, tvl_usd: p.tvl_usd });
+    peersByCategory.set(key, peers);
     peerTvlByCategory.set(key, (peerTvlByCategory.get(key) ?? 0) + p.tvl_usd);
     all.push(ratio);
   }
@@ -149,16 +170,20 @@ export function categoryMultiples(snapshot: Snapshot): { byCategory: Map<string,
     const n = ratios.length;
     const peerTvl = peerTvlByCategory.get(key) ?? 0;
     const waitingTvl = waitingTvlByCategory.get(key) ?? 0;
-    const credibility = n >= 3 ? 1 : peerTvl / (peerTvl + waitingTvl);
-    const multiple = n >= 3 ? catMedian : credibility * catMedian + (1 - credibility) * globalMedian;
-    byCategory.set(key, { key, multiple, peers: n, category_median: catMedian, peer_tvl_usd: peerTvl, waiting_tvl_usd: waitingTvl, credibility });
+    // A category with nothing waiting for a token has nothing to price: its own median, however
+    // thin, survives at weight zero and the global median stands in. Otherwise the v4 rule:
+    // three or more peers speak for the category, fewer are shrunk by the dollars of evidence.
+    const credibility = waitingTvl === 0 ? 0 : n >= 3 ? 1 : peerTvl / (peerTvl + waitingTvl);
+    const multiple = n >= 3 && waitingTvl > 0 ? catMedian : credibility * catMedian + (1 - credibility) * globalMedian;
+    const peersDetail = (peersByCategory.get(key) ?? []).sort((a, b) => b.tvl_usd - a.tvl_usd);
+    byCategory.set(key, { key, multiple, peers: n, category_median: catMedian, peer_tvl_usd: peerTvl, waiting_tvl_usd: waitingTvl, credibility, peers_detail: peersDetail });
   }
   return { byCategory, globalMedian };
 }
 
 /** The multiple a protocol's category carries, with the global median for a category with no peers. */
 export function multipleFor(byCategory: Map<string, CategoryMultiple>, globalMedian: number, category: string | null): CategoryMultiple {
-  return byCategory.get(category ?? '') ?? { key: category ?? '', multiple: globalMedian, peers: 0, category_median: globalMedian, peer_tvl_usd: 0, waiting_tvl_usd: 0, credibility: 0 };
+  return byCategory.get(category ?? '') ?? { key: category ?? '', multiple: globalMedian, peers: 0, category_median: globalMedian, peer_tvl_usd: 0, waiting_tvl_usd: 0, credibility: 0, peers_detail: [] };
 }
 
 /** One category's token propensity: its shrunk token-live share and the factor it maps to. */
@@ -315,6 +340,15 @@ export interface CategoryMultipleRow {
   propensity: number;
 }
 
+/** The traded peers behind one category's multiple, as the detail view names them: the largest
+ *  peers by TVL (at most four), the count they come from, and the category's own median. */
+export interface CategoryPeersRow {
+  category: string;
+  total: number;
+  median: number;
+  peers: CategoryPeer[];
+}
+
 /** Everything the dashboard needs: the board, the live set, and the model it runs. */
 export interface RadarData {
   as_of: string;
@@ -324,6 +358,7 @@ export interface RadarData {
   global_multiple: number;
   global_token_share: number;
   category_multiples: CategoryMultipleRow[];
+  category_peers: CategoryPeersRow[];
   watchlist_size: number;
   board_size: number;
   live_size: number;
@@ -350,7 +385,8 @@ export function buildBoard(snapshot: Snapshot): BoardRow[] {
     const maturity = maturityFactor(snapshot.as_of, p.listed_at);
     const propensity = propensityFor(propensities.byCategory, propensities.globalShare, p.category);
     const implied = Math.max(1, Math.round(p.tvl_usd * mult.multiple * momentum * maturity.factor * propensity.factor));
-    return { p, mult, momentum, maturity, propensity, implied };
+    const pool = Math.round(implied * allocationPrior(p.category));
+    return { p, mult, momentum, maturity, propensity, implied, pool };
   });
   scored.sort((a, b) => b.implied - a.implied || b.p.tvl_usd - a.p.tvl_usd || (a.p.slug < b.p.slug ? -1 : a.p.slug > b.p.slug ? 1 : 0));
   return scored.map((s, i) => ({
@@ -377,7 +413,7 @@ export function buildBoard(snapshot: Snapshot): BoardRow[] {
       propensity_share: round4(s.propensity.share),
       allocation_prior: allocationPrior(s.p.category),
     },
-    farm_steps: farmSteps(s.p, s.maturity.age).map(stepText),
+    farm_steps: farmSteps(s.p, s.maturity.age, s.pool).map(stepText),
   }));
 }
 
@@ -419,6 +455,17 @@ export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: Rada
         return { category: category ?? 'Uncategorised', multiple: round4(m.multiple), peers: m.peers, peer_tvl_usd: Math.round(m.peer_tvl_usd), credibility: round4(m.credibility), propensity: round4(prop.factor) };
       })
       .sort((a, b) => (a.category < b.category ? -1 : a.category > b.category ? 1 : 0)),
+    category_peers: boardCategories
+      .map((category) => {
+        const m = multipleFor(byCategory, globalMedian, category);
+        return {
+          category: category ?? 'Uncategorised',
+          total: m.peers,
+          median: round4(m.category_median),
+          peers: m.peers_detail.slice(0, 4).map((p) => ({ slug: p.slug, name: p.name, ratio: round4(p.ratio), raw_ratio: round4(p.raw_ratio), tvl_usd: Math.round(p.tvl_usd) })),
+        };
+      })
+      .sort((a, b) => (a.category < b.category ? -1 : a.category > b.category ? 1 : 0)),
     watchlist_size: snapshot.watchlist.length,
     board_size: board.length,
     live_size: live.length,
@@ -428,7 +475,7 @@ export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: Rada
       return {
         ...rest,
         pool_usd: Math.round(row.implied_value_usd * row.model.allocation_prior),
-        farm_steps: farmSteps(p, row.age_days),
+        farm_steps: farmSteps(p, row.age_days, Math.round(row.implied_value_usd * row.model.allocation_prior)),
       };
     }),
     live,

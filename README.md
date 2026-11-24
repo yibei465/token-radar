@@ -25,7 +25,12 @@ implied value = TVL × peer multiple × momentum × maturity × propensity
   credibility: the traded peers' TVL against the TVL of the category's protocols still waiting for
   a token, `w = peerTVL / (peerTVL + waitingTVL)`. One $12M peer does not price $8B of curators
   (w near 0), while two multi-billion peers do price restaking (w near 1) — the dollars of
-  evidence, not the headcount, decide how much of the category's own median survives.
+  evidence, not the headcount, decide how much of the category's own median survives. A category
+  with nothing still waiting for a token keeps none of its own median, whatever its peers say:
+  its multiple is the global median. That closes the hole where two observations — one of them at
+  the winsor cap — priced a whole category (Token Locker's 1.53×) that no board row ever used.
+  The detail view names the traded peers behind each multiple, with their ratios and TVL, so the
+  number can be checked against the snapshot.
 - **Momentum** — `1 + clamp(change_7d, −40, +80) / 250`; an unreported change counts as 1.0.
 - **Maturity** — `0.85 + 0.30 · min(age_years, 4) / 4` from the day DefiLlama began tracking the
   protocol; an unknown listing date counts as 1.0.
@@ -44,7 +49,8 @@ names carrying the whole words *wrapped*, *staked* or *staking*, and exchange-pr
 multiple and peer count, read off the same snapshot. The dashboard also carries an estimated
 airdrop pool per row — implied value × a per-category community-allocation prior (5–12%) — and a generated farm plan
 per protocol: category playbooks priced with the gas band of the protocol's own first chain and a
-position sized to its TVL. Token-bearing protocols are shown separately, at the market's own market
+position sized to its TVL, with the opening step naming the TVL already sitting in the protocol
+and the claim step naming the pool the model estimates for it. Token-bearing protocols are shown separately, at the market's own market
 cap, and are never ranked by the model.
 
 ## Run it
